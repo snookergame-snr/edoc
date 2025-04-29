@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
@@ -16,6 +16,7 @@ import {
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { setupAuth, initializeUsers } from "./auth";
 
 // Set up file upload storage
 const storage_dir = path.join(process.cwd(), 'uploads');
@@ -23,17 +24,22 @@ if (!fs.existsSync(storage_dir)) {
   fs.mkdirSync(storage_dir, { recursive: true });
 }
 
+// Create subdirectories for different types of uploads
+const dirs = ['documents', 'circulation', 'storage'];
+dirs.forEach(dir => {
+  const dirPath = path.join(storage_dir, dir);
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+});
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
       let type = req.path.includes('circulation') ? 'circulation' :
-                 req.path.includes('storage') ? 'storage' : 'documents';
+                req.path.includes('storage') ? 'storage' : 'documents';
       
       const uploadPath = path.join(storage_dir, type);
-      if (!fs.existsSync(uploadPath)) {
-        fs.mkdirSync(uploadPath, { recursive: true });
-      }
-      
       cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
@@ -72,37 +78,31 @@ function handleValidationError(err: unknown, res: Response) {
   return res.status(500).json({ error: 'Unknown error occurred' });
 }
 
+// Authentication middleware
+function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ error: "ไม่ได้เข้าสู่ระบบ" });
+}
+
+// Admin role middleware
+function isAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated() && req.user && req.user.role === 'admin') {
+    return next();
+  }
+  res.status(403).json({ error: "ไม่มีสิทธิ์เข้าถึง" });
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
-  // AUTH ROUTES
-  app.post('/api/auth/login', async (req, res) => {
-    try {
-      const { username, password } = req.body;
-      
-      if (!username || !password) {
-        return res.status(400).json({ error: 'Username and password are required' });
-      }
-      
-      const user = await storage.getUserByUsername(username);
-      
-      if (!user || user.password !== password) {
-        return res.status(401).json({ error: 'Invalid username or password' });
-      }
-      
-      // In a real app, you would create a JWT token here
-      // For now, just return the user without the password
-      const { password: _, ...userWithoutPassword } = user;
-      
-      res.status(200).json({ 
-        user: userWithoutPassword,
-        token: 'dummy-token' // In a real app, this would be a JWT token
-      });
-    } catch (err) {
-      handleValidationError(err, res);
-    }
-  });
+  // Set up authentication
+  setupAuth(app);
+  
+  // Initialize default users if the database is empty
+  await initializeUsers();
   
   // USER ROUTES
-  app.get('/api/users', async (req, res) => {
+  app.get('/api/users', isAuthenticated, async (req, res) => {
     try {
       const users = await storage.getUsers();
       // Remove passwords before sending
@@ -117,7 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get('/api/users/:id', async (req, res) => {
+  app.get('/api/users/:id', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const user = await storage.getUser(id);
@@ -136,7 +136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // DOCUMENT CATEGORY ROUTES
-  app.get('/api/document-categories', async (req, res) => {
+  app.get('/api/document-categories', isAuthenticated, async (req, res) => {
     try {
       const categories = await storage.getDocumentCategories();
       res.status(200).json(categories);
@@ -145,7 +145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post('/api/document-categories', async (req, res) => {
+  app.post('/api/document-categories', isAdmin, async (req, res) => {
     try {
       const categoryData = insertDocumentCategorySchema.parse(req.body);
       const newCategory = await storage.createDocumentCategory(categoryData);
@@ -156,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // DOCUMENT ROUTES
-  app.get('/api/documents', async (req, res) => {
+  app.get('/api/documents', isAuthenticated, async (req, res) => {
     try {
       const categoryId = req.query.categoryId ? parseInt(req.query.categoryId as string) : undefined;
       
@@ -173,7 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get('/api/documents/:id', async (req, res) => {
+  app.get('/api/documents/:id', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const document = await storage.getDocument(id);
@@ -188,7 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post('/api/documents', upload.single('file'), async (req, res) => {
+  app.post('/api/documents', isAuthenticated, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
@@ -201,7 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filePath: `/uploads/documents/${req.file.filename}`,
         fileSize: req.file.size,
         categoryId: parseInt(req.body.categoryId),
-        uploadedBy: parseInt(req.body.uploadedBy),
+        uploadedBy: req.user?.id,
         tags: req.body.tags ? JSON.parse(req.body.tags) : [],
         accessRoles: req.body.accessRoles ? JSON.parse(req.body.accessRoles) : [],
         accessDepartments: req.body.accessDepartments ? JSON.parse(req.body.accessDepartments) : [],
@@ -211,7 +211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log activity
       await storage.createActivityLog({
-        userId: documentData.uploadedBy,
+        userId: req.user!.id,
         action: 'upload',
         resourceType: 'document',
         resourceId: newDocument.id,
@@ -227,18 +227,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get('/api/documents/:id/download', async (req, res) => {
+  app.get('/api/documents/:id/download', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = req.query.userId ? parseInt(req.query.userId as string) : 1; // Default to admin if not provided
-      
       const document = await storage.getDocument(id);
       
       if (!document) {
         return res.status(404).json({ error: 'Document not found' });
       }
-      
-      // In a real app, you would check permissions here
       
       // Increment download count
       await storage.incrementDownloadCount(id);
@@ -246,7 +242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Record download history
       const downloadData = insertDownloadHistorySchema.parse({
         documentId: id,
-        userId: userId,
+        userId: req.user!.id,
         ipAddress: req.ip
       });
       
@@ -254,7 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log activity
       await storage.createActivityLog({
-        userId: userId,
+        userId: req.user!.id,
         action: 'download',
         resourceType: 'document',
         resourceId: id,
@@ -264,20 +260,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
-      // In a real app, you would serve the file here
-      // For this demo, just return success
-      res.status(200).json({ 
-        success: true, 
-        message: 'Document download recorded',
-        document: document
-      });
+      // Serve the actual file
+      try {
+        const filePath = path.join(process.cwd(), document.filePath);
+        res.download(filePath, document.fileName, (err) => {
+          if (err) {
+            res.status(500).json({ error: 'Failed to download file', details: err.message });
+          }
+        });
+      } catch (fileErr) {
+        // If file serving fails, just return the document details
+        res.status(200).json({ 
+          success: true, 
+          message: 'Document download recorded',
+          document: document
+        });
+      }
     } catch (err) {
       handleValidationError(err, res);
     }
   });
   
   // WORKFLOW ROUTES
-  app.get('/api/workflows', async (req, res) => {
+  app.get('/api/workflows', isAuthenticated, async (req, res) => {
     try {
       const workflows = await storage.getWorkflows();
       res.status(200).json(workflows);
@@ -286,14 +291,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post('/api/workflows', async (req, res) => {
+  app.post('/api/workflows', isAuthenticated, async (req, res) => {
     try {
-      const workflowData = insertWorkflowSchema.parse(req.body);
+      const workflowData = insertWorkflowSchema.parse({
+        ...req.body,
+        createdBy: req.user!.id
+      });
+      
       const newWorkflow = await storage.createWorkflow(workflowData);
       
       // Log activity
       await storage.createActivityLog({
-        userId: workflowData.createdBy || 1,
+        userId: req.user!.id,
         action: 'create',
         resourceType: 'workflow',
         resourceId: newWorkflow.id,
@@ -307,15 +316,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // CIRCULATION DOCUMENT ROUTES
-  app.get('/api/circulation-documents', async (req, res) => {
+  app.get('/api/circulation-documents', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+      const userId = req.query.userId ? parseInt(req.query.userId as string) : req.user!.id;
       
       let documents;
-      if (userId) {
-        documents = await storage.getCirculationDocumentsByUser(userId);
-      } else {
+      if (req.user!.role === 'admin') {
+        // Admin can see all documents
         documents = await storage.getCirculationDocuments();
+      } else {
+        // Other users only see their own or assigned documents
+        documents = await storage.getCirculationDocumentsByUser(userId);
       }
       
       res.status(200).json(documents);
@@ -324,7 +335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get('/api/circulation-documents/:id', async (req, res) => {
+  app.get('/api/circulation-documents/:id', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const document = await storage.getCirculationDocument(id);
@@ -333,13 +344,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Circulation document not found' });
       }
       
+      // Check user permissions
+      if (req.user!.role !== 'admin' && 
+          document.createdBy !== req.user!.id && 
+          document.assignedTo !== req.user!.id) {
+        return res.status(403).json({ error: 'ไม่มีสิทธิ์เข้าถึงเอกสารนี้' });
+      }
+      
       res.status(200).json(document);
     } catch (err) {
       handleValidationError(err, res);
     }
   });
   
-  app.post('/api/circulation-documents', upload.single('file'), async (req, res) => {
+  app.post('/api/circulation-documents', isAuthenticated, upload.single('file'), async (req, res) => {
     try {
       let filePath = null;
       let fileType = null;
@@ -352,7 +370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const documentData = insertCirculationDocumentSchema.parse({
         ...req.body,
         workflowId: req.body.workflowId ? parseInt(req.body.workflowId) : null,
-        createdBy: parseInt(req.body.createdBy),
+        createdBy: req.user!.id,
         assignedTo: req.body.assignedTo ? parseInt(req.body.assignedTo) : null,
         filePath: filePath,
         fileType: fileType,
@@ -366,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log activity
       await storage.createActivityLog({
-        userId: documentData.createdBy,
+        userId: req.user!.id,
         action: 'create',
         resourceType: 'circulation',
         resourceId: newDocument.id,
@@ -382,12 +400,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.put('/api/circulation-documents/:id/status', async (req, res) => {
+  app.put('/api/circulation-documents/:id/status', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, step, assignedTo, userId, comment } = req.body;
+      const { status, step, assignedTo, comment } = req.body;
       
-      if (!status || step === undefined || !userId) {
+      if (!status || step === undefined) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
       
@@ -395,6 +413,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!document) {
         return res.status(404).json({ error: 'Circulation document not found' });
+      }
+      
+      // Check if the user is assigned to this document
+      if (req.user!.role !== 'admin' && document.assignedTo !== req.user!.id) {
+        return res.status(403).json({ error: 'ไม่มีสิทธิ์ในการอนุมัติเอกสารนี้' });
       }
       
       const updatedDocument = await storage.updateCirculationDocumentStatus(
@@ -406,7 +429,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log activity
       await storage.createActivityLog({
-        userId: parseInt(userId),
+        userId: req.user!.id,
         action: status,
         resourceType: 'circulation',
         resourceId: id,
@@ -424,13 +447,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // STORAGE FILE ROUTES
-  app.get('/api/storage-files', async (req, res) => {
+  app.get('/api/storage-files', isAuthenticated, async (req, res) => {
     try {
-      const userId = parseInt(req.query.userId as string);
+      const userId = req.query.userId ? parseInt(req.query.userId as string) : req.user!.id;
       const parentId = req.query.parentId ? parseInt(req.query.parentId as string) : undefined;
       
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+      // Admin can access any user's files, others can only access their own
+      if (req.user!.role !== 'admin' && userId !== req.user!.id) {
+        return res.status(403).json({ error: 'ไม่มีสิทธิ์เข้าถึงไฟล์ของผู้ใช้อื่น' });
       }
       
       const files = await storage.getStorageFiles(userId, parentId);
@@ -440,9 +464,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get('/api/storage-usage/:userId', async (req, res) => {
+  app.get('/api/storage-usage/:userId?', isAuthenticated, async (req, res) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userId = req.params.userId ? parseInt(req.params.userId) : req.user!.id;
+      
+      // Admin can check any user's storage, others can only check their own
+      if (req.user!.role !== 'admin' && userId !== req.user!.id) {
+        return res.status(403).json({ error: 'ไม่มีสิทธิ์ดูพื้นที่จัดเก็บของผู้ใช้อื่น' });
+      }
+      
       const usageInBytes = await storage.getStorageUsage(userId);
       
       res.status(200).json({
@@ -455,9 +485,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post('/api/storage-files', upload.single('file'), async (req, res) => {
+  app.post('/api/storage-files', isAuthenticated, upload.single('file'), async (req, res) => {
     try {
-      const userId = parseInt(req.body.ownerId);
+      const userId = req.user!.id;
       const currentUsage = await storage.getStorageUsage(userId);
       const limit = 5 * 1024 * 1024; // 5 MB
       
@@ -479,7 +509,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isFolder) {
         // Create folder
         fileData = insertStorageFileSchema.parse({
-          ...req.body,
           name: req.body.name,
           description: req.body.description || '',
           filePath: `/storage/${userId}/${req.body.name}`,
@@ -494,7 +523,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (req.file) {
         // Create file
         fileData = insertStorageFileSchema.parse({
-          ...req.body,
           name: req.body.name || req.file.originalname,
           description: req.body.description || '',
           filePath: `/uploads/storage/${req.file.filename}`,
@@ -530,75 +558,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.delete('/api/storage-files/:id', async (req, res) => {
+  app.delete('/api/storage-files/:id', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = parseInt(req.query.userId as string);
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
-      
       const file = await storage.getStorageFile(id);
       
       if (!file) {
         return res.status(404).json({ error: 'File not found' });
       }
       
-      // Check ownership
-      if (file.ownerId !== userId) {
-        return res.status(403).json({ error: 'You do not have permission to delete this file' });
+      // Check if the user owns the file
+      if (req.user!.role !== 'admin' && file.ownerId !== req.user!.id) {
+        return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบไฟล์นี้' });
       }
       
-      const success = await storage.deleteStorageFile(id);
+      const isDeleted = await storage.deleteStorageFile(id);
       
-      if (!success) {
-        return res.status(404).json({ error: 'File not found or could not be deleted' });
+      if (isDeleted) {
+        // Log activity
+        await storage.createActivityLog({
+          userId: req.user!.id,
+          action: 'delete',
+          resourceType: 'storage',
+          resourceId: id,
+          details: { 
+            name: file.name,
+            isFolder: file.isFolder
+          }
+        });
+        
+        res.status(200).json({ success: true });
+      } else {
+        res.status(400).json({ error: 'Failed to delete file' });
       }
-      
-      // Log activity
-      await storage.createActivityLog({
-        userId: userId,
-        action: 'delete',
-        resourceType: 'storage',
-        resourceId: id,
-        details: { 
-          name: file.name,
-          isFolder: file.isFolder
-        }
-      });
-      
-      res.status(200).json({ success: true });
     } catch (err) {
       handleValidationError(err, res);
     }
   });
   
-  app.post('/api/storage-files/:id/restore', async (req, res) => {
+  app.post('/api/storage-files/:id/restore', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = parseInt(req.body.userId);
-      
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
-      
       const file = await storage.getStorageFile(id);
       
       if (!file) {
         return res.status(404).json({ error: 'File not found' });
       }
       
-      // Check ownership
-      if (file.ownerId !== userId) {
-        return res.status(403).json({ error: 'You do not have permission to restore this file' });
+      // Check if the user owns the file
+      if (req.user!.role !== 'admin' && file.ownerId !== req.user!.id) {
+        return res.status(403).json({ error: 'ไม่มีสิทธิ์กู้คืนไฟล์นี้' });
       }
       
       const restoredFile = await storage.restoreStorageFile(id);
       
       // Log activity
       await storage.createActivityLog({
-        userId: userId,
+        userId: req.user!.id,
         action: 'restore',
         resourceType: 'storage',
         resourceId: id,
@@ -615,31 +631,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // ACTIVITY LOG ROUTES
-  app.get('/api/activity-logs', async (req, res) => {
+  app.get('/api/activity-logs', isAuthenticated, async (req, res) => {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
       const logs = await storage.getRecentActivityLogs(limit);
       
-      // Get user information for each log
-      const enrichedLogs = await Promise.all(logs.map(async (log) => {
-        const user = await storage.getUser(log.userId);
-        return {
-          ...log,
-          user: user ? {
-            id: user.id,
-            displayName: user.displayName,
-            department: user.department,
-            profileImage: user.profileImage
-          } : undefined
-        };
-      }));
+      // For non-admin users, only show their own activities or public activities
+      if (req.user!.role !== 'admin') {
+        const filteredLogs = logs.filter(log => 
+          log.userId === req.user!.id || 
+          log.resourceType === 'document' || 
+          log.resourceType === 'circulation'
+        );
+        return res.status(200).json(filteredLogs);
+      }
       
-      res.status(200).json(enrichedLogs);
+      res.status(200).json(logs);
     } catch (err) {
       handleValidationError(err, res);
     }
   });
-  
+
+  // Admin API routes
+  app.get('/api/admin/stats', isAdmin, async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      const documents = await storage.getDocuments();
+      const circulationDocs = await storage.getCirculationDocuments();
+      
+      // Get pending approvals
+      const pendingApprovals = circulationDocs.filter(doc => doc.status === 'pending');
+      
+      // Get file stats
+      const totalFiles = documents.length;
+      const downloadCount = documents.reduce((sum, doc) => sum + doc.downloadCount, 0);
+      
+      // Calculate user stats by role
+      const roleStats = {
+        admin: users.filter(user => user.role === 'admin').length,
+        manager: users.filter(user => user.role === 'manager').length,
+        staff: users.filter(user => user.role === 'staff').length
+      };
+      
+      // Calculate department stats
+      const departmentMap = new Map();
+      users.forEach(user => {
+        if (!departmentMap.has(user.department)) {
+          departmentMap.set(user.department, 0);
+        }
+        departmentMap.set(user.department, departmentMap.get(user.department) + 1);
+      });
+      
+      const departmentStats = Array.from(departmentMap.entries()).map(([dept, count]) => ({
+        department: dept,
+        count
+      }));
+      
+      res.status(200).json({
+        users: {
+          total: users.length,
+          byRole: roleStats
+        },
+        documents: {
+          total: totalFiles,
+          downloads: downloadCount
+        },
+        circulation: {
+          total: circulationDocs.length,
+          pendingApproval: pendingApprovals.length
+        },
+        departments: departmentStats
+      });
+    } catch (err) {
+      handleValidationError(err, res);
+    }
+  });
+
+  // Create an HTTP server and return it
   const httpServer = createServer(app);
   return httpServer;
 }
