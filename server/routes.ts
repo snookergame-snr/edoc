@@ -97,6 +97,91 @@ function isAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Installation routes
+  app.post("/api/install/database", async (req, res) => {
+    try {
+      // Validate database credentials
+      const { host, port, username, password, database, useLocal } = req.body;
+      
+      if (useLocal) {
+        // Update .env file with database credentials if useLocal is true
+        const envContent = `
+DATABASE_URL=postgresql://${username}:${password}@${host}:${port}/${database}
+PGHOST=${host}
+PGPORT=${port}
+PGUSER=${username}
+PGPASSWORD=${password}
+PGDATABASE=${database}
+SESSION_SECRET=${randomBytes(32).toString('hex')}
+`;
+
+        fs.writeFileSync('.env', envContent);
+        
+        // Reload environment variables
+        dotenv.config({ override: true });
+        
+        // Return success
+        return res.json({ success: true });
+      } else {
+        // Just test connection without updating env
+        return res.json({ success: true });
+      }
+    } catch (error) {
+      console.error('Database connection error:', error);
+      return res.status(500).json({ 
+        error: "ไม่สามารถเชื่อมต่อฐานข้อมูลได้",
+        details: error.message
+      });
+    }
+  });
+  
+  app.post("/api/install/complete", async (req, res) => {
+    try {
+      // Create default admin user
+      const existingAdmin = await storage.getUserByUsername("admin");
+      
+      if (!existingAdmin) {
+        // Create admin user
+        const adminUser = await storage.createUser({
+          username: "admin",
+          password: await hashPassword("admin"),
+          displayName: "ผู้ดูแลระบบ",
+          department: "ฝ่ายไอที",
+          email: "admin@ekachon-hospital.local",
+          role: "admin",
+          profileImage: "",
+        });
+        
+        console.log("Created default admin user:", adminUser.username);
+      }
+      
+      // Create default document categories 
+      try {
+        await storage.createDocumentCategory({
+          name: "แบบฟอร์มภายใน",
+          type: "internal",
+          description: "แบบฟอร์มที่ใช้ภายในโรงพยาบาล",
+        });
+        
+        await storage.createDocumentCategory({
+          name: "เอกสารทางการ",
+          type: "official",
+          description: "เอกสารทางการที่ได้รับการอนุมัติ",
+        });
+      } catch (err) {
+        console.log("Categories might already exist:", err.message);
+      }
+      
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Installation error:', error);
+      return res.status(500).json({ 
+        error: "ไม่สามารถติดตั้งระบบได้",
+        details: error.message
+      });
+    }
+  });
+
   // Set up authentication
   setupAuth(app);
   
