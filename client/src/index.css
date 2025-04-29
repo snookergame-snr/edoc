@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 20 14.3% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14.3% 4.1%;
+    --primary: 207 90% 54%;
+    --primary-foreground: 211 100% 99%;
+    --secondary: 220 14.3% 24%;
+    --secondary-foreground: 211 100% 100%;
+    --muted: 60 4.8% 95.9%;
+    --muted-foreground: 25 5.3% 44.7%;
+    --accent: 60 4.8% 95.9%;
+    --accent-foreground: 24 9.8% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 20 5.9% 90%;
+    --input: 20 5.9% 90%;
+    --ring: 207 90% 54%;
+    --radius: 0.5rem;
+
+    /* Status colors */
+    --status-pending: 45 93% 47%;
+    --status-approved: 142 69% 42%;
+    --status-rejected: 0 91% 42%;
+    --status-in-progress: 211 100% 56%;
+
+    /* Chart Colors */
+    --chart-1: 207 90% 54%;
+    --chart-2: 142 69% 42%;
+    --chart-3: 45 93% 47%;
+    --chart-4: 0 91% 42%;
+    --chart-5: 279 56% 55%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 207 90% 54%;
+    --primary-foreground: 211 100% 99%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', sans-serif;
+  }
+}
+
+/* Custom Styles */
+.sidebar-item.active {
+  @apply border-l-4 border-primary bg-primary/10 text-primary;
+}
+
+.sidebar-item {
+  @apply border-l-4 border-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-secondary/50 rounded;
+}
+
+.doc-card:hover {
+  @apply border-primary shadow-md;
+}
+
+.status-indicator {
+  @apply h-2 w-2 rounded-full mr-1.5;
+}
+
+.status-pending {
+  @apply bg-[#ff832b];
+}
+
+.status-approved {
+  @apply bg-[#24a148];
+}
+
+.status-rejected {
+  @apply bg-[#da1e28];
+}
+
+.status-in-progress {
+  @apply bg-[#8a3ffc];
+}
+
+.tab.active {
+  @apply text-primary border-b-2 border-primary;
+}
