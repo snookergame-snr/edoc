@@ -120,3 +120,17 @@
 .tab.active {
   @apply text-primary border-b-2 border-primary;
 }
+
+/* Auth page styling */
+.gradient-text {
+  @apply bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent;
+}
+
+/* Card hover effect */
+.hover-card {
+  @apply transition-all duration-300;
+}
+
+.hover-card:hover {
+  @apply shadow-lg -translate-y-1;
+}

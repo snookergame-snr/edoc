@@ -1,19 +1,52 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Menu, Bell, ChevronDown } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
 }
 
 export default function Header({ onToggleSidebar }: HeaderProps) {
-  const { user, logout } = useAuth();
+  const { user, logoutMutation } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [location, setLocation] = useLocation();
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const toggleProfileMenu = () => {
     setShowProfileMenu(!showProfileMenu);
+  };
+
+  const handleLogout = () => {
+    logoutMutation.mutate();
+    setShowProfileMenu(false);
+    setLocation("/auth");
+  };
+
+  // Get first letter of first and last name for avatar fallback
+  const getInitials = () => {
+    if (!user?.displayName) return "รพ";
+    const nameParts = user.displayName.split(" ");
+    if (nameParts.length > 1) {
+      return (nameParts[0].charAt(0) + nameParts[1].charAt(0)).toUpperCase();
+    }
+    return nameParts[0].charAt(0).toUpperCase();
   };
 
   return (
@@ -21,6 +54,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center">
           <button 
+            id="sidebar-toggle"
             className="lg:hidden mr-3 p-2 text-secondary hover:bg-muted rounded"
             onClick={onToggleSidebar}
           >
@@ -57,14 +91,14 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
             <Bell className="h-5 w-5" />
             <span className="absolute top-1 right-1 h-2 w-2 bg-destructive rounded-full"></span>
           </button>
-          <div className="relative">
+          <div className="relative" ref={menuRef}>
             <button 
               className="flex items-center"
               onClick={toggleProfileMenu}
             >
               <Avatar className="h-8 w-8 mr-2">
-                <AvatarImage src="https://i.pravatar.cc/100?img=6" alt={user?.displayName || "ผู้ใช้"} />
-                <AvatarFallback>{user?.displayName?.substring(0, 2) || "รพ"}</AvatarFallback>
+                <AvatarImage src="" alt={user?.displayName || "ผู้ใช้"} />
+                <AvatarFallback>{getInitials()}</AvatarFallback>
               </Avatar>
               <div className="hidden md:block">
                 <p className="text-sm font-semibold text-secondary">{user?.displayName || "ผู้ใช้งาน"}</p>
@@ -84,12 +118,10 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                 <div className="border-t border-border my-1"></div>
                 <button 
                   className="block w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
-                  onClick={() => {
-                    logout();
-                    setShowProfileMenu(false);
-                  }}
+                  onClick={handleLogout}
+                  disabled={logoutMutation.isPending}
                 >
-                  ออกจากระบบ
+                  {logoutMutation.isPending ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}
                 </button>
               </div>
             )}

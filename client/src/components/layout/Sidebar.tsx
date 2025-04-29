@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { 
   LayoutDashboard, 
   FileDown, 
@@ -17,6 +17,28 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+// Custom NavLink component to avoid nested anchor issue
+function NavLink({ href, isActive, children, onClick }: { href: string, isActive: boolean, children: React.ReactNode, onClick?: () => void }) {
+  const [, setLocation] = useLocation();
+  
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setLocation(href);
+    if (onClick) onClick();
+  };
+  
+  return (
+    <div 
+      onClick={handleClick}
+      className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent cursor-pointer ${
+        isActive ? 'bg-accent text-primary font-medium' : ''
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [location] = useLocation();
   const { user } = useAuth();
@@ -25,6 +47,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   
   return (
     <aside 
+      id="sidebar"
       className={`fixed h-full w-64 bg-white shadow-md z-20 overflow-y-auto custom-scrollbar transition-transform duration-300 lg:translate-x-0 ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
@@ -55,49 +78,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           <p className="text-xs text-muted-foreground uppercase font-semibold">เมนูหลัก</p>
         </div>
         
-        <Link href="/">
-          <a 
-            className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-              location === '/' ? 'active' : ''
-            }`}
-          >
-            <LayoutDashboard className="mr-3 h-5 w-5" />
-            <span>แดชบอร์ด</span>
-          </a>
-        </Link>
+        <NavLink href="/" isActive={location === '/'} onClick={onClose}>
+          <LayoutDashboard className="mr-3 h-5 w-5" />
+          <span>แดชบอร์ด</span>
+        </NavLink>
         
-        <Link href="/download">
-          <a 
-            className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-              location === '/download' ? 'active' : ''
-            }`}
-          >
-            <FileDown className="mr-3 h-5 w-5" />
-            <span>ดาวน์โหลดเอกสาร</span>
-          </a>
-        </Link>
+        <NavLink href="/download" isActive={location === '/download'} onClick={onClose}>
+          <FileDown className="mr-3 h-5 w-5" />
+          <span>ดาวน์โหลดเอกสาร</span>
+        </NavLink>
         
-        <Link href="/circulation">
-          <a 
-            className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-              location === '/circulation' ? 'active' : ''
-            }`}
-          >
-            <FileSearch className="mr-3 h-5 w-5" />
-            <span>เอกสารเวียน</span>
-          </a>
-        </Link>
+        <NavLink href="/circulation" isActive={location === '/circulation'} onClick={onClose}>
+          <FileSearch className="mr-3 h-5 w-5" />
+          <span>เอกสารเวียน</span>
+        </NavLink>
         
-        <Link href="/storage">
-          <a 
-            className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-              location === '/storage' ? 'active' : ''
-            }`}
-          >
-            <Folder className="mr-3 h-5 w-5" />
-            <span>พื้นที่จัดเก็บส่วนตัว</span>
-          </a>
-        </Link>
+        <NavLink href="/storage" isActive={location === '/storage'} onClick={onClose}>
+          <Folder className="mr-3 h-5 w-5" />
+          <span>พื้นที่จัดเก็บส่วนตัว</span>
+        </NavLink>
         
         {isAdmin && (
           <>
@@ -105,38 +104,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <p className="text-xs text-muted-foreground uppercase font-semibold">สำหรับผู้ดูแลระบบ</p>
             </div>
             
-            <Link href="/admin/users">
-              <a 
-                className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-                  location === '/admin/users' ? 'active' : ''
-                }`}
-              >
-                <UserCog className="mr-3 h-5 w-5" />
-                <span>จัดการผู้ใช้งาน</span>
-              </a>
-            </Link>
+            <NavLink href="/admin/users" isActive={location === '/admin/users'} onClick={onClose}>
+              <UserCog className="mr-3 h-5 w-5" />
+              <span>จัดการผู้ใช้งาน</span>
+            </NavLink>
             
-            <Link href="/admin/documents">
-              <a 
-                className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-                  location === '/admin/documents' ? 'active' : ''
-                }`}
-              >
-                <FileCog className="mr-3 h-5 w-5" />
-                <span>จัดการเอกสาร</span>
-              </a>
-            </Link>
+            <NavLink href="/admin/documents" isActive={location === '/admin/documents'} onClick={onClose}>
+              <FileCog className="mr-3 h-5 w-5" />
+              <span>จัดการเอกสาร</span>
+            </NavLink>
             
-            <Link href="/admin/settings">
-              <a 
-                className={`sidebar-item flex items-center px-4 py-3 text-secondary hover:text-primary hover:bg-accent ${
-                  location === '/admin/settings' ? 'active' : ''
-                }`}
-              >
-                <Settings className="mr-3 h-5 w-5" />
-                <span>ตั้งค่าระบบ</span>
-              </a>
-            </Link>
+            <NavLink href="/admin/settings" isActive={location === '/admin/settings'} onClick={onClose}>
+              <Settings className="mr-3 h-5 w-5" />
+              <span>ตั้งค่าระบบ</span>
+            </NavLink>
           </>
         )}
         
