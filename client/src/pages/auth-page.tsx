@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { insertUserSchema } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
-import { Redirect } from "wouter";
+import { useLocation } from "wouter";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -56,11 +56,14 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<string>("login");
   const { user, loginMutation, registerMutation, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   
-  // Redirect if already logged in
-  if (user) {
-    return <Redirect to="/" />;
-  }
+  // Redirect if already logged in using useEffect
+  useEffect(() => {
+    if (user) {
+      setLocation("/");
+    }
+  }, [user, setLocation]);
 
   // Login form
   const loginForm = useForm<LoginFormValues>({
@@ -173,7 +176,7 @@ export default function AuthPage() {
                     </form>
                   </Form>
                 </CardContent>
-                <CardFooter className="flex justify-center">
+                <CardFooter className="flex flex-col space-y-2">
                   <p className="text-sm text-gray-500">
                     ยังไม่มีบัญชี?{" "}
                     <Button
@@ -182,6 +185,16 @@ export default function AuthPage() {
                       onClick={() => setActiveTab("register")}
                     >
                       ลงทะเบียน
+                    </Button>
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    ต้องการติดตั้งระบบใหม่?{" "}
+                    <Button
+                      variant="link"
+                      className="p-0"
+                      onClick={() => window.location.href = "/install"}
+                    >
+                      ไปที่หน้าติดตั้ง
                     </Button>
                   </p>
                 </CardFooter>

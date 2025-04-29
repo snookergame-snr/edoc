@@ -10,6 +10,7 @@ import AdminDocuments from "@/pages/AdminDocuments";
 import AdminUsers from "@/pages/AdminUsers";
 import AdminSettings from "@/pages/AdminSettings";
 import AuthPage from "@/pages/auth-page";
+import InstallPage from "@/pages/install-page";
 import MainLayout from "@/components/layout/MainLayout";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
@@ -29,6 +30,7 @@ function Router() {
       <ProtectedRoute path="/admin/users" component={AdminUsers} />
       <ProtectedRoute path="/admin/settings" component={AdminSettings} />
       <Route path="/auth" component={AuthPage} />
+      <Route path="/install" component={InstallPage} />
       <Route component={NotFound} />
     </Switch>
   );

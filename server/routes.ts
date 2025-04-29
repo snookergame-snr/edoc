@@ -16,7 +16,9 @@ import {
 import { z } from "zod";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { setupAuth, initializeUsers } from "./auth";
+import { setupAuth, initializeUsers, hashPassword } from "./auth";
+import { randomBytes } from "crypto";
+import * as dotenv from "dotenv";
 
 // Set up file upload storage
 const storage_dir = path.join(process.cwd(), 'uploads');
