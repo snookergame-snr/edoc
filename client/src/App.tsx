@@ -9,19 +9,26 @@ import PersonalStorage from "@/pages/PersonalStorage";
 import AdminDocuments from "@/pages/AdminDocuments";
 import AdminUsers from "@/pages/AdminUsers";
 import AdminSettings from "@/pages/AdminSettings";
+import AuthPage from "@/pages/auth-page";
 import MainLayout from "@/components/layout/MainLayout";
 import { AuthProvider } from "@/hooks/use-auth";
+import { ProtectedRoute } from "@/lib/protected-route";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// Create a client
+const queryClient = new QueryClient();
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/download" component={DownloadCenter} />
-      <Route path="/circulation" component={CirculationDocuments} />
-      <Route path="/storage" component={PersonalStorage} />
-      <Route path="/admin/documents" component={AdminDocuments} />
-      <Route path="/admin/users" component={AdminUsers} />
-      <Route path="/admin/settings" component={AdminSettings} />
+      <ProtectedRoute path="/" component={Dashboard} />
+      <ProtectedRoute path="/download" component={DownloadCenter} />
+      <ProtectedRoute path="/circulation" component={CirculationDocuments} />
+      <ProtectedRoute path="/storage" component={PersonalStorage} />
+      <ProtectedRoute path="/admin/documents" component={AdminDocuments} />
+      <ProtectedRoute path="/admin/users" component={AdminUsers} />
+      <ProtectedRoute path="/admin/settings" component={AdminSettings} />
+      <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -29,11 +36,16 @@ function Router() {
 
 function App() {
   return (
-    <AuthProvider>
-      <MainLayout>
-        <Router />
-      </MainLayout>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AuthProvider>
+          <MainLayout>
+            <Router />
+          </MainLayout>
+          <Toaster />
+        </AuthProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 }
 
